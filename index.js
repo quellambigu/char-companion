@@ -356,7 +356,7 @@ async function callAI(apiCfg, systemPrompt) {
       return data.content?.[0]?.text?.trim() || '';
     }
 
-    const baseUrl = apiCfg.base_url || 'https://api.openai.com/v1';
+    const baseUrl = (apiCfg.base_url || 'https://api.openai.com/v1').replace(/\/+$/, '');
     const resp = await fetch(`${baseUrl}/chat/completions`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${apiCfg.api_key}` },
@@ -628,7 +628,7 @@ function registerRoutes(router) {
         if (!resp.ok) throw new Error(JSON.stringify(data));
         models = (data.data || []).map(m => m.id);
       } else {
-        const url = `${base_url || 'https://api.openai.com/v1'}/models`;
+        const url = `${(base_url || 'https://api.openai.com/v1').replace(/\/+$/, '')}/models`;
         const resp = await fetch(url, { headers: { 'Authorization': `Bearer ${api_key}` } });
         const data = await resp.json();
         if (!resp.ok) throw new Error(JSON.stringify(data));
@@ -741,7 +741,7 @@ function registerRoutes(router) {
   router.post('/api-presets', (req, res) => {
     const { name, provider, base_url, api_key, model } = req.body;
     if (!name || !String(name).trim()) {
-      res.status(400).json({ error: '请填写渠道名称' });
+      res.status(400).json({ error: '请填写配置名称' });
       return;
     }
     if (!api_key) {

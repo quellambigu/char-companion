@@ -89,8 +89,10 @@ function buildTimeContext() {
   return `当前时间: ${y}年${mo}月${d}日 星期${wd} ${period} ${h}:${mi}${guidance}`;
 }
 
-async function fetchWeather(cityInput) {
-  if (!cityInput) return '';
+async function fetchWeatherRaw(cityInput) {
+  if (!cityInput) return null;
+  // 支持"城市/区"这种更精确的写法(比如"东京/品川区"),自动转成"区, 城市"这种
+  // geocoding更容易识别的顺序;只填城市(不带斜杠)照旧直接用。
   const query = cityInput.includes('/')
     ? cityInput.split('/').map(s => s.trim()).filter(Boolean).reverse().join(', ')
     : cityInput;
@@ -99,19 +101,35 @@ async function fetchWeather(cityInput) {
       headers: { 'Accept': 'application/json' },
       timeout: 5000
     });
-    if (!resp.ok) return '';
+    if (!resp.ok) return null;
     const data = await resp.json();
     const cur = data.current_condition?.[0];
-    if (!cur) return '';
-    const desc = cur.lang_zh?.[0]?.value || cur.weatherDesc?.[0]?.value || '';
-    const temp = cur.temp_C;
-    const feelsLike = cur.FeelsLikeC;
-    const humidity = cur.humidity;
-    return `当前天气(${cityInput}): ${desc}, 气温${temp}°C(体感${feelsLike}°C), 湿度${humidity}% (提到天气时请自然带上"${cityInput}"这个地名,让消息有真实的地理感,不要写得像发生在一个不知道哪里的模糊地方)`;
+    if (!cur) return null;
+    return {
+      cityInput,
+      desc: cur.lang_zh?.[0]?.value || cur.weatherDesc?.[0]?.value || '',
+      temp: cur.temp_C,
+      feelsLike: cur.FeelsLikeC,
+      humidity: cur.humidity
+    };
   } catch (e) {
     console.error(`[${PLUGIN_ID}] 天气获取失败:`, e.message);
-    return '';
+    return null;
   }
+}
+
+// 给 AI 用的版本: 不出现具体地名,角色是虚构人物,提真实地名会出戏
+async function fetchWeather(cityInput) {
+  const w = await fetchWeatherRaw(cityInput);
+  if (!w) return '';
+  return `当前天气: ${w.desc}, 气温${w.temp}°C(体感${w.feelsLike}°C), 湿度${w.humidity}% (这是用户所在地的真实天气,只用来让你的话贴合真实的天气感受即可,绝对不要说出具体的现实地名/城市名,角色是虚构人物,提到真实地名会很出戏)`;
+}
+
+// 给"测试"按钮用的版本: 带上地名,方便用户自己核对有没有查对地方
+async function fetchWeatherForDisplay(cityInput) {
+  const w = await fetchWeatherRaw(cityInput);
+  if (!w) return '';
+  return `当前天气(${w.cityInput}): ${w.desc}, 气温${w.temp}°C(体感${w.feelsLike}°C), 湿度${w.humidity}%`;
 }
 
 // ===== 健康数据(来自 Health Auto Export,苹果健康) =====
@@ -623,17 +641,31 @@ function registerRoutes(router) {
   router.post('/fetch-models', async (req, res) => {
     const { provider, api_key, base_url } = req.body;
     if (!api_key) return res.status(400).json({ error: '请先填写 API Key' });
+
+    // 统一的"读文本再尝试解析JSON"逻辑: 如果上游返回的不是合法JSON(比如网关鉴权失败直接
+    // 返回空body或者HTML错误页),之前会被 resp.json() 直接抛出一个很含糊的
+    // "invalid json response body...Unexpected end of JSON input",看不出到底是什么问题。
+    // 现在把HTTP状态码和原始内容的前200个字符带出来,方便判断具体卡在哪一步。
+    async function safeParseJson(resp) {
+      const text = await resp.text();
+      try {
+        return JSON.parse(text);
+      } catch (e) {
+        throw new Error(`HTTP ${resp.status}, 但响应内容不是合法JSON: ${text.trim() ? text.slice(0, 200) : '(空响应体)'}`);
+      }
+    }
+
     try {
       let models = [];
       if (provider === 'anthropic') {
         const resp = await fetch('https://api.anthropic.com/v1/models', { headers: { 'x-api-key': api_key, 'anthropic-version': '2023-06-01' } });
-        const data = await resp.json();
+        const data = await safeParseJson(resp);
         if (!resp.ok) throw new Error(JSON.stringify(data));
         models = (data.data || []).map(m => m.id);
       } else {
         const url = `${(base_url || 'https://api.openai.com/v1').replace(/\/+$/, '')}/models`;
         const resp = await fetch(url, { headers: { 'Authorization': `Bearer ${api_key}` } });
-        const data = await resp.json();
+        const data = await safeParseJson(resp);
         if (!resp.ok) throw new Error(JSON.stringify(data));
         models = (data.data || []).map(m => m.id).sort();
       }
@@ -644,7 +676,7 @@ function registerRoutes(router) {
   router.post('/test-weather', async (req, res) => {
     const { city } = req.body;
     if (!city) return res.status(400).json({ error: '请填写城市名' });
-    const weather = await fetchWeather(city);
+    const weather = await fetchWeatherForDisplay(city);
     if (!weather) return res.status(500).json({ error: '天气获取失败,请检查城市名是否正确' });
     res.json({ ok: true, weather });
   });

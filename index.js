@@ -89,10 +89,13 @@ function buildTimeContext() {
   return `当前时间: ${y}年${mo}月${d}日 星期${wd} ${period} ${h}:${mi}${guidance}`;
 }
 
-async function fetchWeather(city) {
-  if (!city) return '';
+async function fetchWeather(cityInput) {
+  if (!cityInput) return '';
+  const query = cityInput.includes('/')
+    ? cityInput.split('/').map(s => s.trim()).filter(Boolean).reverse().join(', ')
+    : cityInput;
   try {
-    const resp = await fetch(`https://wttr.in/${encodeURIComponent(city)}?format=j1`, {
+    const resp = await fetch(`https://wttr.in/${encodeURIComponent(query)}?format=j1`, {
       headers: { 'Accept': 'application/json' },
       timeout: 5000
     });
@@ -104,7 +107,7 @@ async function fetchWeather(city) {
     const temp = cur.temp_C;
     const feelsLike = cur.FeelsLikeC;
     const humidity = cur.humidity;
-    return `当前天气(${city}): ${desc}, 气温${temp}°C(体感${feelsLike}°C), 湿度${humidity}%`;
+    return `当前天气(${cityInput}): ${desc}, 气温${temp}°C(体感${feelsLike}°C), 湿度${humidity}% (提到天气时请自然带上"${cityInput}"这个地名,让消息有真实的地理感,不要写得像发生在一个不知道哪里的模糊地方)`;
   } catch (e) {
     console.error(`[${PLUGIN_ID}] 天气获取失败:`, e.message);
     return '';

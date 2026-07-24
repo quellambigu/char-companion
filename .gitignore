@@ -1,9 +1,6 @@
-data/
 node_modules/
+data/
+*.bak
 *.bak_*
+.env
 *.env
-*.key
-*_backup*
-*备份*
-*bak*
-*.log

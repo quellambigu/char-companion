@@ -50,9 +50,17 @@ function buildUserPersonaText(persona) {
   return parts.join('\n');
 }
 
-function buildWorldInfoText(entries, selectedKeys) {
-  if (!entries || !selectedKeys || selectedKeys.length === 0) return '';
-  const selected = entries.filter(e => selectedKeys.includes(e.uid ?? e.key));
+function buildWorldInfoText(entries, mode, selectedKeys) {
+  if (!entries || entries.length === 0) return '';
+  let selected;
+  if (mode === 'all') {
+    selected = entries;
+  } else if (mode === 'selected') {
+    if (!selectedKeys || selectedKeys.length === 0) return '';
+    selected = entries.filter(e => selectedKeys.includes(e.uid ?? e.key));
+  } else {
+    return '';
+  }
   return selected.map(e => `[${e.comment || e.key || '条目'}] ${e.content}`).join('\n');
 }
 
@@ -479,7 +487,7 @@ function buildRecentChatText(recentChat) {
 async function generateAndSend(profile, overridePrompt) {
   const persona = buildPersonaText(profile.character_data || {});
   const userPersona = buildUserPersonaText(profile.user_persona);
-  const worldInfo = buildWorldInfoText(profile.world_info_entries, profile.selected_world_info_keys);
+  const worldInfo = buildWorldInfoText(profile.world_info_entries, profile.world_info_mode, profile.selected_world_info_keys);
   const recentChatText = profile.use_recent_chat ? buildRecentChatText(profile.recent_chat) : '';
 
   const weatherEnabled = profile.weather_enabled !== false; // 默认开启，兼容老数据

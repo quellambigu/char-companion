@@ -18,24 +18,24 @@ https://github.com/quellambigu/char-companion-frontend
 打开Termux（如果有自动启动脚本，先退出）：
 
 
-# 确认SillyTavern路径
+### 确认SillyTavern路径
 ```bash
 echo $ST_DIR
 ```
 
-# 如果上面输出是空的，先补一句：
+### 如果上面输出是空的，先补一句：
 ```bash
 export ST_DIR=~/SillyTavern
 ```
 
-# 打开"服务器插件"开关
+### 打开"服务器插件"开关
 ```bash
 sed -i 's/enableServerPlugins: false/enableServerPlugins: true/' "$ST_DIR/config.yaml"
 grep "enableServerPlugins" "$ST_DIR/config.yaml"
 ```
-# (如果之前已经是true，上面sed不会有效果，没关系，grep看到true就算过关)
+### (如果之前已经是true，上面sed不会有效果，没关系，grep看到true就算过关)
 
-# 安装插件本体
+### 安装插件本体
 ```bash
 mkdir -p "$ST_DIR/plugins"
 cd "$ST_DIR/plugins"
@@ -45,7 +45,7 @@ npm install
 echo "后端插件安装完成 ✓"
 ```
 
-# 重启酒馆
+### 重启酒馆
 ```bash
 cd "$ST_DIR"
 bash start.sh
@@ -115,6 +115,3 @@ cd "$ST_DIR/plugins/char-companion" && git pull && npm install
 - Gemini官方API对接还没搞定
 - iOS用"快捷指令"实现即时推送、健康数据推送功能、Discord webhook详细用法——这几块教程还没来得及补充
 
-## 隐私说明
-
-你的API Key、Bark/ntfy等推送配置，都只保存在**你自己的服务器本地**（`data/`目录），不会上传到本仓库，也不会经过任何第三方服务器。

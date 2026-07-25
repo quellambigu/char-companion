@@ -10,7 +10,7 @@
 
 const fs = require('fs');
 const path = require('path');
-// const fetch = require('node-fetch'); // 已禁用,改用 Node 内置 fetch,修复 Premature close 问题
+// // const fetch = require('node-fetch'); // 已禁用，改用 Node 内置 fetch，修复 Premature close 问题 // 已禁用,改用 Node 内置 fetch,修复 Premature close 问题
 const PLUGIN_ID = 'char-companion';
 let dataDir = null;
 let scheduler = null;

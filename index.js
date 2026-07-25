@@ -412,6 +412,44 @@ async function pushToBark(profile, message) {
   if (!resp.ok || data.code !== 200) throw new Error(`Bark 推送失败: ${JSON.stringify(data)}`);
 }
 
+// ===== 推送: ntfy =====
+
+async function pushToNtfy(profile, message) {
+  if (!profile.ntfy_topic) throw new Error('未配置 ntfy Topic');
+  const baseUrl = (profile.ntfy_server_url || 'https://ntfy.sh').replace(/\/+$/, '');
+  const title = profile.display_name || profile.character_name || 'Companion';
+  const resp = await fetch(baseUrl, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json; charset=utf-8' },
+    body: JSON.stringify({ topic: profile.ntfy_topic, title, message })
+  });
+  if (!resp.ok) throw new Error(`ntfy 推送失败: HTTP ${resp.status}`);
+}
+
+// ===== 推送: Webhook =====
+
+async function pushToWebhook(profile, message) {
+  if (!profile.webhook_url) throw new Error('未配置 Webhook 地址');
+  const title = profile.display_name || profile.character_name || 'Companion';
+  const headers = { 'Content-Type': 'application/json; charset=utf-8' };
+  if (profile.webhook_secret) headers['Authorization'] = `Bearer ${profile.webhook_secret}`;
+  const resp = await fetch(profile.webhook_url, {
+    method: 'POST',
+    headers,
+    body: JSON.stringify({ title, message, character_name: profile.character_name || '' })
+  });
+  if (!resp.ok) throw new Error(`Webhook 推送失败: HTTP ${resp.status}`);
+}
+
+// ===== 推送分发: 根据用户在面板里选的渠道调用对应的发送函数 =====
+
+async function pushMessage(profile, message) {
+  const channel = profile.push_channel || 'bark';
+  if (channel === 'ntfy') return pushToNtfy(profile, message);
+  if (channel === 'webhook') return pushToWebhook(profile, message);
+  return pushToBark(profile, message);
+}
+
 // ===== 生成 + 发送 =====
 
 // ===== 消息内容比例分配 + 最近聊天感知 =====
@@ -472,7 +510,7 @@ async function generateAndSend(profile, overridePrompt) {
 
   const message = await callAI(profile.api, systemPrompt);
   if (!message) throw new Error('AI 未返回有效内容');
-  await pushToBark(profile, message);
+  await pushMessage(profile, message);
   return message;
 }
 

@@ -421,7 +421,7 @@ async function pushToNtfy(profile, message) {
   const resp = await fetch(baseUrl, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json; charset=utf-8' },
-    body: JSON.stringify({ topic: profile.ntfy_topic, title, message })
+    body: JSON.stringify({ topic: profile.ntfy_topic, title, message, ...(profile.avatar_url ? { icon: profile.avatar_url } : {}) })
   });
   if (!resp.ok) throw new Error(`ntfy 推送失败: HTTP ${resp.status}`);
 }

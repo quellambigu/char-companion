@@ -6,35 +6,47 @@
 
 ## 安装
 
-安装全程建议开启🔮（代理/加速）。
+**安装全程建议开启🔮（代理/加速）。**
 
 ### 1. 装前端（酒馆里的设置面板）
 
-在SillyTavern的"扩展"面板里，用下面这个链接直接安装：https://github.com/quellambigu/char-companion-frontend
+在SillyTavern的"扩展"面板里，用下面这个链接直接安装：
+https://github.com/quellambigu/char-companion-frontend
+
 ### 2. 装后端（真正干活的部分）
 
 打开Termux（如果有自动启动脚本，先退出）：
 
-```bash
+
 # 确认SillyTavern路径
+```bash
 echo $ST_DIR
+```
+
 # 如果上面输出是空的，先补一句：
+```bash
 export ST_DIR=~/SillyTavern
+```
 
 # 打开"服务器插件"开关
+```bash
 sed -i 's/enableServerPlugins: false/enableServerPlugins: true/' "$ST_DIR/config.yaml"
 grep "enableServerPlugins" "$ST_DIR/config.yaml"
+```
 # (如果之前已经是true，上面sed不会有效果，没关系，grep看到true就算过关)
 
 # 安装插件本体
+```bash
 mkdir -p "$ST_DIR/plugins"
 cd "$ST_DIR/plugins"
 git clone https://github.com/quellambigu/char-companion.git char-companion
 cd char-companion
 npm install
 echo "后端插件安装完成 ✓"
+```
 
 # 重启酒馆
+```bash
 cd "$ST_DIR"
 bash start.sh
 ```

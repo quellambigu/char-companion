@@ -4,3 +4,8 @@ data/
 *.bak_*
 .env
 *.env
+*.key
+*_backup*
+*备份*
+*bak*
+*.log

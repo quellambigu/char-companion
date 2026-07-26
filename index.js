@@ -438,6 +438,29 @@ async function pushToNtfy(profile, message) {
 async function pushToWebhook(profile, message) {
   if (!profile.webhook_url) throw new Error('未配置 Webhook 地址');
   const title = profile.display_name || profile.character_name || 'Companion';
+
+  if (profile.webhook_url.includes('feishu.cn') || profile.webhook_url.includes('larksuite.com')) {
+    const text = message;
+    const body = { msg_type: 'text', content: { text } };
+    if (profile.webhook_secret) {
+      const crypto = require('crypto');
+      const timestamp = String(Math.floor(Date.now() / 1000));
+      const stringToSign = `${timestamp}\n${profile.webhook_secret}`;
+      const hmac = crypto.createHmac('sha256', stringToSign);
+      hmac.update('');
+      body.timestamp = timestamp;
+      body.sign = hmac.digest('base64');
+    }
+    const resp = await fetch(profile.webhook_url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json; charset=utf-8' },
+      body: JSON.stringify(body)
+    });
+    const data = await resp.json().catch(() => ({}));
+    if (!resp.ok || data.code !== 0) throw new Error(`飞书推送失败: ${JSON.stringify(data)}`);
+    return;
+  }
+
   const headers = { 'Content-Type': 'application/json; charset=utf-8' };
   if (profile.webhook_secret) headers['Authorization'] = `Bearer ${profile.webhook_secret}`;
   const resp = await fetch(profile.webhook_url, {

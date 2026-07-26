@@ -14,6 +14,7 @@ const path = require('path');
 const PLUGIN_ID = 'char-companion';
 let dataDir = null;
 let scheduler = null;
+let schedulerRunning = false;
 let profilesCache = {};
 
 // ===== 工具函数 =====
@@ -558,6 +559,9 @@ function formatDateKey(d) { return d.getFullYear() + '-' + String(d.getMonth()+1
 function startScheduler() {
   if (scheduler) clearInterval(scheduler);
   scheduler = setInterval(async () => {
+    if (schedulerRunning) return; // 上一轮还没跑完(比如AI响应慢)就不再开始新一轮,避免重复发送
+    schedulerRunning = true;
+    try {
     const reminders = loadReminders();
     if (reminders.length > 0) {
       const nowMs0 = Date.now();
@@ -652,6 +656,9 @@ function startScheduler() {
       }
 
       if (changed) saveProfiles(profiles);
+    }
+    } finally {
+      schedulerRunning = false;
     }
   }, 60 * 1000);
 }

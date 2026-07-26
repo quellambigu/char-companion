@@ -2,7 +2,7 @@
 
 让你角色卡里的角色，主动给你发消息、推送到手机——就像真的在跟你聊天一样。
 
-> ⚠️ 目前是**单角色推送**：只能给你当前正在聊的这个角色设置推送。切换角色会关闭总开关、需要再次开启。
+> 所有推送设置(渠道、API、比例等)是全局共用的，切换角色卡不会清空。只有"角色人设"和"世界书"会跟着当前角色卡实时变化。想让某个角色专属推送、聊别的角色时不受影响，可以用面板里的🔒锁定功能。
 
 ## 安装
 
@@ -51,13 +51,6 @@ cd "$ST_DIR"
 bash start.sh
 ```
 
-**如果启动后API设置一直报错**（常见于Node版本较旧的设备），执行：
-
-```bash
-sed -i "s|const fetch = require('node-fetch');|// const fetch = require('node-fetch'); // 已禁用,改用 Node 内置 fetch,修复 Premature close 问题|" "$ST_DIR/plugins/char-companion/index.js"
-grep -n "fetch = require" "$ST_DIR/plugins/char-companion/index.js"
-```
-
 ### 3. 以后怎么更新
 
 更新步骤已经整理到前端仓库的README里，点这里看：
@@ -67,7 +60,7 @@ grep -n "fetch = require" "$ST_DIR/plugins/char-companion/index.js"
 
 ## 设置说明
 
-安装好后，在扩展面板里打开插件设置面板，右上角显示的是**当前角色**的名字。
+安装好后，在扩展面板里打开插件设置面板，右上角显示的是**当前角色卡的头像文件名**（方便同名角色卡也能分清是哪一张）。
 
 - 🔴 总开关关闭中，不推送
 - 🔵 总开关开启，推送中
@@ -108,7 +101,6 @@ grep -n "fetch = require" "$ST_DIR/plugins/char-companion/index.js"
 
 ## 已知问题 / 待改进
 
-- 切换角色卡会清空该角色的推送设置（计划改成自动保留）
 - Gemini官方API对接还没搞定
 - iOS用"快捷指令"实现即时推送、健康数据推送功能、Discord webhook详细用法——这几块教程还没来得及补充
 

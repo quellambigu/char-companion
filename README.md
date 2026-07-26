@@ -60,11 +60,8 @@ grep -n "fetch = require" "$ST_DIR/plugins/char-companion/index.js"
 
 ### 3. 以后怎么更新
 
-```bash
-cd "$ST_DIR/plugins/char-companion" && git pull && npm install
-```
-
-前端扩展直接在SillyTavern"管理扩展"面板里点更新即可。
+更新步骤已经整理到前端仓库的README里，点这里看：
+👉 https://github.com/quellambigu/char-companion-frontend
 
 ---
 

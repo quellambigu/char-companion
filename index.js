@@ -508,11 +508,51 @@ function buildRecentChatText(recentChat) {
   return recentChat.map(m => `${m.name || '?'}: ${m.text || ''}`).join('\n');
 }
 
+// ===== 推送历史: 供查重/call back使用 =====
+
+function getPushHistoryDays(profile) {
+  return profile.push_history_days === undefined ? 3 : (Number(profile.push_history_days) || 0);
+}
+
+function formatRelativeTime(ts) {
+  const diffMs = Date.now() - ts;
+  const diffMin = diffMs / 60000;
+  const diffHr = diffMin / 60;
+  const diffDay = diffHr / 24;
+  if (diffMin < 60) return '刚才';
+  if (diffDay < 1) return `${Math.round(diffHr)}小时前`;
+  if (diffDay < 2) return '昨天';
+  return `${Math.round(diffDay)}天前`;
+}
+
+function buildPushHistoryText(profile) {
+  const days = getPushHistoryDays(profile);
+  const history = Array.isArray(profile.push_history) ? profile.push_history : [];
+  if (days <= 0 || history.length === 0) return '';
+  const lines = history.map(h => `${formatRelativeTime(h.time)}: ${h.text}`);
+  return `最近几天发过的消息(供参考,避免这次话题/句式撞车;如果有合适的由头也可以自然呼应之前提过的事,没有合适的由头不用硬凑):\n${lines.join('\n')}`;
+}
+
+const PUSH_HISTORY_MAX_ENTRIES = 80;
+
+function appendPushHistory(profile, text) {
+  const days = getPushHistoryDays(profile);
+  if (days <= 0) return; // 拖到0 = 关闭, 不记录
+  if (!Array.isArray(profile.push_history)) profile.push_history = [];
+  profile.push_history.push({ time: Date.now(), text });
+  const cutoff = Date.now() - days * 24 * 60 * 60 * 1000;
+  profile.push_history = profile.push_history.filter(h => h.time >= cutoff);
+  if (profile.push_history.length > PUSH_HISTORY_MAX_ENTRIES) {
+    profile.push_history = profile.push_history.slice(profile.push_history.length - PUSH_HISTORY_MAX_ENTRIES);
+  }
+}
+
 async function generateAndSend(profile, overridePrompt) {
   const persona = buildPersonaText(profile.character_data || {});
   const userPersona = buildUserPersonaText(profile.user_persona);
   const worldInfo = buildWorldInfoText(profile.world_info_entries, profile.world_info_mode, profile.selected_world_info_keys);
   const recentChatText = profile.use_recent_chat ? buildRecentChatText(profile.recent_chat) : '';
+  const pushHistoryText = buildPushHistoryText(profile);
 
   const weatherEnabled = profile.weather_enabled !== false; // 默认开启，兼容老数据
   let timeCtx, weatherCtx, healthCtx;
@@ -533,6 +573,7 @@ async function generateAndSend(profile, overridePrompt) {
     userPersona ? `你正在联系的用户信息(这就是{{user}}):\n${userPersona}` : '',
     worldInfo ? `补充设定(世界书):\n${worldInfo}` : '',
     recentChatText ? `最近的聊天记录(供参考,让这条消息能呼应最新剧情,不要直接复述原文):\n${recentChatText}` : '',
+    pushHistoryText,
     timeCtx,
     weatherCtx,
     healthCtx,
@@ -542,6 +583,7 @@ async function generateAndSend(profile, overridePrompt) {
   const message = await callAI(profile.api, systemPrompt);
   if (!message) throw new Error('AI 未返回有效内容');
   await pushMessage(profile, message);
+  appendPushHistory(profile, message);
   return message;
 }
 

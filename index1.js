@@ -230,16 +230,14 @@ function extractLatestMetric(metrics, metricName) {
   return { qty: latest.qty, date: latest.date, units: m.units || '' };
 }
 
-// enabled: {steps,rhr,hrv,sleep,resp,period,spo2,temp,mood,exercise} 每项 true/false，表示这条指标要不要出现在摘要里。
+// 精确解析: 优先按 Health Auto Export 真实的数据格式(data.metrics 数组,
+// 每项含 name/units/data,data里每条是 {date, qty, source})；
+// 如果不是这个嵌套格式，再尝试按 iOS 快捷指令手搭的扁平格式解析(steps/rhr/hrv/sleep/resp + 对应_date字段)。
+// 两种格式都支持是因为 Health Auto Export 免费试用到期后，改用快捷指令手动拼JSON上报，
+// 快捷指令里很难拼出 Health Auto Export 那种嵌套数组结构，所以后端这边做了兼容而不是让前端硬凑格式。
+// enabled: {steps,rhr,hrv,sleep,resp} 每项 true/false，表示这条指标要不要出现在摘要里。
 // 不传就默认全部开启，保证老数据/老配置行为不变。
-const HEALTH_METRIC_DEFAULTS = {
-  steps: true, rhr: true, hrv: true, sleep: true, resp: true,
-  period: true, spo2: true, temp: true, mood: true, exercise: true,
-};
-
-// 精确解析: 基于 Health Auto Export 真实的数据格式(data.metrics 数组,
-// 每项含 name/units/data,data里每条是 {date, qty, source})
-// 同时兼容 iOS 快捷指令手搭的扁平 JSON 格式(已完全不依赖 Health Auto Export)
+const HEALTH_METRIC_DEFAULTS = { steps: true, rhr: true, hrv: true, sleep: true, resp: true };
 function summarizeHealthData(raw, enabled) {
   const on = { ...HEALTH_METRIC_DEFAULTS, ...(enabled || {}) };
   try {
@@ -277,44 +275,18 @@ function summarizeHealthData(raw, enabled) {
 
     // ---- 兼容格式: 快捷指令手搭的扁平 JSON ----
     // 例: {"steps":8,"steps_date":"...","rhr":58,"rhr_date":"...","hrv":42.3,"hrv_date":"...",
-    //      "resp":16,"resp_date":"...","period":"轻","period_date":"...","spo2":98,"spo2_date":"...",
-    //      "temp":36.5,"temp_date":"...","mood":"平静","mood_date":"...","exercise":32,"exercise_date":"...",
-    //      "sleep_start":"...","sleep_end":"...","sleep_hours":7.2}
-    // 睡眠优先用新格式(sleep_start/sleep_end/sleep_hours = 入睡/起床/时长)，没有的话退回旧格式(sleep = 单条阶段分类)。
+    //      "sleep":"Deep","sleep_date":"...","resp":16,"resp_date":"..."}
     const hasFlatData = typeof raw?.steps === 'number' || typeof raw?.rhr === 'number'
-      || typeof raw?.hrv === 'number' || typeof raw?.resp === 'number' || !!raw?.sleep
-      || !!raw?.period || typeof raw?.spo2 === 'number' || typeof raw?.temp === 'number'
-      || !!raw?.mood || typeof raw?.exercise === 'number' || !!raw?.sleep_start;
+      || typeof raw?.hrv === 'number' || typeof raw?.resp === 'number' || !!raw?.sleep;
     if (hasFlatData) {
       const parts = [];
       if (on.steps && typeof raw.steps === 'number') parts.push(`步数 ${Math.round(raw.steps)}`);
       if (on.rhr && typeof raw.rhr === 'number') parts.push(`静息心率 ${raw.rhr.toFixed(0)}bpm`);
       if (on.hrv && typeof raw.hrv === 'number') parts.push(`心率变异性(HRV) ${raw.hrv.toFixed(1)}ms`);
-
-      if (on.sleep) {
-        if (raw.sleep_start && raw.sleep_end) {
-          const fmtTime = (iso) => {
-            try {
-              const d = new Date(iso);
-              return `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
-            } catch { return iso; }
-          };
-          const durText = typeof raw.sleep_hours === 'number' ? `, 时长约${raw.sleep_hours.toFixed(1)}小时` : '';
-          parts.push(`入睡 ${fmtTime(raw.sleep_start)} 起床 ${fmtTime(raw.sleep_end)}${durText}`);
-        } else if (raw.sleep) {
-          // 旧格式兼容: 快捷指令里"睡眠"这个健康类型查出来的是睡眠阶段分类(比如"Deep"深睡/"Core"核心睡眠)，
-          // 不是总睡眠时长的数字，所以这里按"最近一次睡眠记录"来描述，不写成"睡眠时长X小时"。
-          parts.push(`最近一次睡眠记录: ${raw.sleep}`);
-        }
-      }
-
+      // 注意: 快捷指令里"睡眠"这个健康类型查出来的是睡眠阶段分类(比如"Deep"深睡/"Core"核心睡眠)，
+      // 不是总睡眠时长的数字，所以这里按"最近一次睡眠记录"来描述，不写成"睡眠时长X小时"。
+      if (on.sleep && raw.sleep) parts.push(`最近一次睡眠记录: ${raw.sleep}`);
       if (on.resp && typeof raw.resp === 'number') parts.push(`呼吸频率 ${raw.resp.toFixed(1)}次/分`);
-      // 经期是用户自己在健康App里记录的真实数据(不是苹果的周期预测)，值是"点滴/轻/中/重"这类描述。
-      if (on.period && raw.period) parts.push(`经期记录: ${raw.period}`);
-      if (on.spo2 && typeof raw.spo2 === 'number') parts.push(`血氧 ${raw.spo2.toFixed(0)}%`);
-      if (on.temp && typeof raw.temp === 'number') parts.push(`体温 ${raw.temp.toFixed(1)}°C`);
-      if (on.mood && raw.mood) parts.push(`情绪记录: ${raw.mood}`);
-      if (on.exercise && typeof raw.exercise === 'number') parts.push(`锻炼时长 ${Math.round(raw.exercise)}分钟`);
       return parts.join(', ');
     }
 

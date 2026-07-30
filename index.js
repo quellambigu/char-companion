@@ -281,15 +281,26 @@ function summarizeHealthData(raw, enabled) {
     //      "temp":36.5,"temp_date":"...","mood":"平静","mood_date":"...","exercise":32,"exercise_date":"...",
     //      "sleep_start":"...","sleep_end":"...","sleep_hours":7.2}
     // 睡眠优先用新格式(sleep_start/sleep_end/sleep_hours = 入睡/起床/时长)，没有的话退回旧格式(sleep = 单条阶段分类)。
-    const hasFlatData = typeof raw?.steps === 'number' || typeof raw?.rhr === 'number'
-      || typeof raw?.hrv === 'number' || typeof raw?.resp === 'number' || !!raw?.sleep
-      || !!raw?.period || typeof raw?.spo2 === 'number' || typeof raw?.temp === 'number'
-      || !!raw?.mood || typeof raw?.exercise === 'number' || !!raw?.sleep_start;
+    //
+    // 数字字段容错: 快捷指令那边不管是数字还是文字都统一加引号也没关系——下面用 numOrNull 解析,
+    // 真数字("rhr":58)和数字文字("rhr":"58")都认,某天手表没测到数据变成空字符串("temp":"")时会被当成"没有这项",
+    // 直接跳过这一条,不会导致整段解析失败。
+    const numOrNull = (v) => {
+      if (v === undefined || v === null || v === '') return null;
+      const n = Number(v);
+      return Number.isFinite(n) ? n : null;
+    };
+    const stepsN = numOrNull(raw?.steps), rhrN = numOrNull(raw?.rhr), hrvN = numOrNull(raw?.hrv);
+    const respN = numOrNull(raw?.resp), spo2N = numOrNull(raw?.spo2), tempN = numOrNull(raw?.temp);
+    const exerciseN = numOrNull(raw?.exercise);
+    const hasFlatData = stepsN !== null || rhrN !== null || hrvN !== null || respN !== null
+      || !!raw?.sleep || !!raw?.period || spo2N !== null || tempN !== null
+      || !!raw?.mood || exerciseN !== null || !!raw?.sleep_start;
     if (hasFlatData) {
       const parts = [];
-      if (on.steps && typeof raw.steps === 'number') parts.push(`步数 ${Math.round(raw.steps)}`);
-      if (on.rhr && typeof raw.rhr === 'number') parts.push(`静息心率 ${raw.rhr.toFixed(0)}bpm`);
-      if (on.hrv && typeof raw.hrv === 'number') parts.push(`心率变异性(HRV) ${raw.hrv.toFixed(1)}ms`);
+      if (on.steps && stepsN !== null) parts.push(`步数 ${Math.round(stepsN)}`);
+      if (on.rhr && rhrN !== null) parts.push(`静息心率 ${rhrN.toFixed(0)}bpm`);
+      if (on.hrv && hrvN !== null) parts.push(`心率变异性(HRV) ${hrvN.toFixed(1)}ms`);
 
       if (on.sleep) {
         if (raw.sleep_start && raw.sleep_end) {
@@ -299,7 +310,8 @@ function summarizeHealthData(raw, enabled) {
               return `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
             } catch { return iso; }
           };
-          const durText = typeof raw.sleep_hours === 'number' ? `, 时长约${raw.sleep_hours.toFixed(1)}小时` : '';
+          const sleepHoursN = numOrNull(raw.sleep_hours);
+          const durText = sleepHoursN !== null ? `, 时长约${sleepHoursN.toFixed(1)}小时` : '';
           parts.push(`入睡 ${fmtTime(raw.sleep_start)} 起床 ${fmtTime(raw.sleep_end)}${durText}`);
         } else if (raw.sleep) {
           // 旧格式兼容: 快捷指令里"睡眠"这个健康类型查出来的是睡眠阶段分类(比如"Deep"深睡/"Core"核心睡眠)，
@@ -308,13 +320,13 @@ function summarizeHealthData(raw, enabled) {
         }
       }
 
-      if (on.resp && typeof raw.resp === 'number') parts.push(`呼吸频率 ${raw.resp.toFixed(1)}次/分`);
+      if (on.resp && respN !== null) parts.push(`呼吸频率 ${respN.toFixed(1)}次/分`);
       // 经期是用户自己在健康App里记录的真实数据(不是苹果的周期预测)，值是"点滴/轻/中/重"这类描述。
       if (on.period && raw.period) parts.push(`经期记录: ${raw.period}`);
-      if (on.spo2 && typeof raw.spo2 === 'number') parts.push(`血氧 ${raw.spo2.toFixed(0)}%`);
-      if (on.temp && typeof raw.temp === 'number') parts.push(`体温 ${raw.temp.toFixed(1)}°C`);
+      if (on.spo2 && spo2N !== null) parts.push(`血氧 ${spo2N.toFixed(0)}%`);
+      if (on.temp && tempN !== null) parts.push(`体温 ${tempN.toFixed(1)}°C`);
       if (on.mood && raw.mood) parts.push(`情绪记录: ${raw.mood}`);
-      if (on.exercise && typeof raw.exercise === 'number') parts.push(`锻炼时长 ${Math.round(raw.exercise)}分钟`);
+      if (on.exercise && exerciseN !== null) parts.push(`锻炼时长 ${Math.round(exerciseN)}分钟`);
       return parts.join(', ');
     }
 
@@ -595,7 +607,7 @@ function buildPushHistoryText(profile) {
   const history = Array.isArray(profile.push_history) ? profile.push_history : [];
   if (days <= 0 || history.length === 0) return '';
   const lines = history.map(h => `${formatRelativeTime(h.time)}: ${h.text}`);
-  return `最近几天发过的消息(供参考,避免这次话题/句式撞车;如果有合适的由头也可以自然呼应之前提过的事,没有合适的由头不用硬凑):\n${lines.join('\n')}`;
+  return `最近几天发过的消息(供参考;重点看开头句式和用词有没有老是撞车,比如老用同一个人名/机构开头的报告体、同一套感叹词或固定搭配——这次务必换一种说话方式开场,别再用相同的句式模板;内容上如果有合适的由头也可以自然呼应之前提过的事,没有合适的由头不用硬凑):\n${lines.join('\n')}`;
 }
 
 const PUSH_HISTORY_MAX_ENTRIES = 80;
@@ -642,7 +654,7 @@ async function generateAndSend(profile, overridePrompt) {
     timeCtx,
     weatherCtx,
     healthCtx,
-    overridePrompt || profile.custom_prompt || '现在请以这个角色的身份,主动给用户发一条简短的消息(1-2句话),像是随手发来的关心、调侃或想念。不要加引号,不要加任何前缀说明或旁白,直接给出这句话本身。'
+    overridePrompt || profile.custom_prompt || '现在请以这个角色的身份,主动给用户发一条简短的消息(1-2句话),像是随手发来的关心、调侃或想念。说话方式要自然多变,不要每次都用同一套固定的开场白或句式模板。不要加引号,不要加任何前缀说明或旁白,直接给出这句话本身。'
   ].filter(Boolean).join('\n\n');
 
   const message = await callAI(profile.api, systemPrompt);

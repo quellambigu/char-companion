@@ -1,6 +1,6 @@
 {
   "name": "char-companion-server",
-  "version": "1.5.1",
+  "version": "1.5.3",
   "description": "SillyTavern server plugin - proactive character message pusher",
   "main": "index.js"
 }

@@ -628,6 +628,7 @@ async function generateAndSend(profile, overridePrompt) {
   const persona = buildPersonaText(profile.character_data || {});
   const userPersona = buildUserPersonaText(profile.user_persona);
   const worldInfo = buildWorldInfoText(profile.world_info_entries, profile.world_info_mode, profile.selected_world_info_keys);
+  const extraWorldInfo = buildWorldInfoText(profile.extra_world_info_entries, profile.extra_world_info_mode, profile.extra_selected_world_info_keys);
   const recentChatText = profile.use_recent_chat ? buildRecentChatText(profile.recent_chat) : '';
   const pushHistoryText = buildPushHistoryText(profile);
 
@@ -649,9 +650,10 @@ async function generateAndSend(profile, overridePrompt) {
     persona ? `角色设定:\n${persona}` : '',
     userPersona ? `你正在联系的用户信息(这就是{{user}}):\n${userPersona}` : '',
     worldInfo ? `补充设定(世界书):\n${worldInfo}` : '',
+    extraWorldInfo ? `补充设定(另一本世界书,独立于角色卡):\n${extraWorldInfo}` : '',
     recentChatText ? `最近的聊天记录(供参考,让这条消息能呼应最新剧情,不要直接复述原文):\n${recentChatText}` : '',
     pushHistoryText,
-    timeCtx,
+    timeCtx ? `${timeCtx}\n\n(重要提醒:如果上面这个日期,和用户人设描述里提到的重要日子——比如生日、纪念日、重要事件——正好对上了,请务必把这次消息的重点放在这件事上,不要错过,不要一带而过。)` : '',
     weatherCtx,
     healthCtx,
     overridePrompt || profile.custom_prompt || '现在请以这个角色的身份,主动给用户发一条简短的消息(1-2句话),像是随手发来的关心、调侃或想念。说话方式要自然多变,不要每次都用同一套固定的开场白或句式模板。不要加引号,不要加任何前缀说明或旁白,直接给出这句话本身。'
@@ -661,7 +663,46 @@ async function generateAndSend(profile, overridePrompt) {
   if (!message) throw new Error('AI 未返回有效内容');
   await pushMessage(profile, message);
   appendPushHistory(profile, message);
+  appendChatLog(profile, 'char', message);
   return message;
+}
+
+function appendChatLog(profile, role, text) {
+  if (!Array.isArray(profile.chat_log)) profile.chat_log = [];
+  profile.chat_log.push({ role, text, time: Date.now() });
+  const CHAT_LOG_MAX = 300;
+  if (profile.chat_log.length > CHAT_LOG_MAX) {
+    profile.chat_log = profile.chat_log.slice(profile.chat_log.length - CHAT_LOG_MAX);
+  }
+}
+
+async function generateChatReply(profile, userText) {
+  appendChatLog(profile, 'user', userText);
+
+  const persona = buildPersonaText(profile.character_data || {});
+  const userPersona = buildUserPersonaText(profile.user_persona);
+  const worldInfo = buildWorldInfoText(profile.world_info_entries, profile.world_info_mode, profile.selected_world_info_keys);
+  const extraWorldInfo = buildWorldInfoText(profile.extra_world_info_entries, profile.extra_world_info_mode, profile.extra_selected_world_info_keys);
+
+  const history = (profile.chat_log || []).slice(-20)
+    .map(m => `${m.role === 'user' ? '用户' : (profile.character_name || '角色')}: ${m.text}`)
+    .join('\n');
+
+  const systemPrompt = [
+    `你现在扮演角色: ${profile.character_name || '一个角色'}。`,
+    persona ? `角色设定:\n${persona}` : '',
+    userPersona ? `你正在联系的用户信息(这就是{{user}}):\n${userPersona}` : '',
+    worldInfo ? `补充设定(世界书):\n${worldInfo}` : '',
+    extraWorldInfo ? `补充设定(另一本世界书,独立于角色卡):\n${extraWorldInfo}` : '',
+    history ? `这是你和用户最近的一段"番外"对话记录(独立于酒馆里的正式剧情,不影响主线):\n${history}` : '',
+    `用户刚刚回复了你一句话。请以这个角色的身份,自然地接上话、做出真实的反应,像日常聊天一样,不要加引号,不要加任何前缀说明或旁白,直接给出这句话本身,控制在1-3句话。`
+  ].filter(Boolean).join('\n\n');
+
+  const reply = await callAI(profile.api, systemPrompt);
+  if (!reply) throw new Error('AI 未返回有效内容');
+  appendChatLog(profile, 'char', reply);
+  await pushMessage(profile, reply);
+  return reply;
 }
 
 // ===== 定时调度 =====
@@ -824,6 +865,29 @@ function registerRoutes(router) {
     if (!profile) return res.status(404).json({ error: '未找到该配置' });
     try { const msg = await generateAndSend(profile); res.json({ ok: true, message: msg }); }
     catch (err) { res.status(500).json({ error: err.message }); }
+  });
+
+  router.get('/profiles/:id/chat-log', (req, res) => {
+    const profiles = loadProfiles();
+    const profile = profiles[req.params.id];
+    if (!profile) return res.status(404).json({ error: '未找到该配置' });
+    res.json({ chat_log: profile.chat_log || [] });
+  });
+
+  router.post('/profiles/:id/chat-reply', async (req, res) => {
+    const profiles = loadProfiles();
+    const profile = profiles[req.params.id];
+    if (!profile) return res.status(404).json({ error: '未找到该配置' });
+    const text = (req.body?.text || '').trim();
+    if (!text) return res.status(400).json({ error: '回复内容不能为空' });
+    try {
+      const reply = await generateChatReply(profile, text);
+      saveProfiles(profiles);
+      res.json({ ok: true, reply });
+    } catch (err) {
+      saveProfiles(profiles);
+      res.status(500).json({ error: err.message });
+    }
   });
 
   router.post('/test-api', async (req, res) => {

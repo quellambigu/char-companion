@@ -604,13 +604,22 @@ function formatRelativeTime(ts) {
 
 function buildPushHistoryText(profile) {
   const days = getPushHistoryDays(profile);
-  const history = Array.isArray(profile.push_history) ? profile.push_history : [];
-  if (days <= 0 || history.length === 0) return '';
-  const lines = history.map(h => `${formatRelativeTime(h.time)}: ${h.text}`);
-  return `最近几天发过的消息(供参考;重点看开头句式和用词有没有老是撞车,比如老用同一个人名/机构开头的报告体、同一套感叹词或固定搭配——这次务必换一种说话方式开场,别再用相同的句式模板;内容上如果有合适的由头也可以自然呼应之前提过的事,没有合适的由头不用硬凑):\n${lines.join('\n')}`;
+  if (days <= 0) return '';
+  const cutoff = Date.now() - days * 24 * 60 * 60 * 1000;
+  const pushItems = (Array.isArray(profile.push_history) ? profile.push_history : [])
+    .filter(h => h.time >= cutoff)
+    .map(h => ({ time: h.time, line: `${formatRelativeTime(h.time)}: ${h.text}` }));
+  const chatItems = (Array.isArray(profile.chat_log) ? profile.chat_log : [])
+    .filter(m => m.time >= cutoff)
+    .map(m => ({ time: m.time, line: `${formatRelativeTime(m.time)}(回复聊天/${m.role === 'user' ? '用户' : '你'}): ${m.text}` }));
+  let merged = pushItems.concat(chatItems).sort((a, b) => a.time - b.time);
+  if (merged.length > PUSH_HISTORY_MAX_ENTRIES) merged = merged.slice(merged.length - PUSH_HISTORY_MAX_ENTRIES);
+  if (merged.length === 0) return '';
+  const lines = merged.map(x => x.line);
+  return `最近发过的消息以及和用户"回复聊天"互动过的内容(供参考;重点看开头句式和用词有没有老是撞车,比如老用同一个人名/机构开头的报告体、同一套感叹词或固定搭配——这次务必换一种说话方式开场,别再用相同的句式模板;内容上如果有合适的由头也可以自然呼应之前提过的事,没有合适的由头不用硬凑):\n${lines.join('\n')}`;
 }
 
-const PUSH_HISTORY_MAX_ENTRIES = 80;
+const PUSH_HISTORY_MAX_ENTRIES = 100;
 
 function appendPushHistory(profile, text) {
   const days = getPushHistoryDays(profile);
@@ -683,10 +692,8 @@ async function generateChatReply(profile, userText) {
   const userPersona = buildUserPersonaText(profile.user_persona);
   const worldInfo = buildWorldInfoText(profile.world_info_entries, profile.world_info_mode, profile.selected_world_info_keys);
   const extraWorldInfo = buildWorldInfoText(profile.extra_world_info_entries, profile.extra_world_info_mode, profile.extra_selected_world_info_keys);
-
-  const history = (profile.chat_log || []).slice(-20)
-    .map(m => `${m.role === 'user' ? '用户' : (profile.character_name || '角色')}: ${m.text}`)
-    .join('\n');
+  const pushHistoryText = buildPushHistoryText(profile);
+  console.log('[记忆调试] chat_log条数:', (profile.chat_log||[]).length, ' push_history条数:', (profile.push_history||[]).length, ' pushHistoryText内容:', pushHistoryText);
 
   const systemPrompt = [
     `你现在扮演角色: ${profile.character_name || '一个角色'}。`,
@@ -694,7 +701,7 @@ async function generateChatReply(profile, userText) {
     userPersona ? `你正在联系的用户信息(这就是{{user}}):\n${userPersona}` : '',
     worldInfo ? `补充设定(世界书):\n${worldInfo}` : '',
     extraWorldInfo ? `补充设定(另一本世界书,独立于角色卡):\n${extraWorldInfo}` : '',
-    history ? `这是你和用户最近的一段"番外"对话记录(独立于酒馆里的正式剧情,不影响主线):\n${history}` : '',
+    pushHistoryText,
     `用户刚刚回复了你一句话。请以这个角色的身份,自然地接上话、做出真实的反应,像日常聊天一样,不要加引号,不要加任何前缀说明或旁白,直接给出这句话本身,控制在1-3句话。`
   ].filter(Boolean).join('\n\n');
 
@@ -863,7 +870,7 @@ function registerRoutes(router) {
     const profiles = loadProfiles();
     const profile = profiles[req.params.id];
     if (!profile) return res.status(404).json({ error: '未找到该配置' });
-    try { const msg = await generateAndSend(profile); res.json({ ok: true, message: msg }); }
+    try { const msg = await generateAndSend(profile); saveProfiles(profiles); res.json({ ok: true, message: msg }); }
     catch (err) { res.status(500).json({ error: err.message }); }
   });
 
@@ -888,6 +895,17 @@ function registerRoutes(router) {
       saveProfiles(profiles);
       res.status(500).json({ error: err.message });
     }
+  });
+
+  router.post('/profiles/:id/chat-send', async (req, res) => {
+    const profiles = loadProfiles();
+    const profile = profiles[req.params.id];
+    if (!profile) return res.status(404).json({ error: '未找到该配置' });
+    const text = (req.body?.text || '').trim();
+    if (!text) return res.status(400).json({ error: '内容不能为空' });
+    appendChatLog(profile, 'user', text);
+    saveProfiles(profiles);
+    res.json({ ok: true });
   });
 
   router.post('/test-api', async (req, res) => {

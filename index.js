@@ -693,7 +693,6 @@ async function generateChatReply(profile, userText) {
   const worldInfo = buildWorldInfoText(profile.world_info_entries, profile.world_info_mode, profile.selected_world_info_keys);
   const extraWorldInfo = buildWorldInfoText(profile.extra_world_info_entries, profile.extra_world_info_mode, profile.extra_selected_world_info_keys);
   const pushHistoryText = buildPushHistoryText(profile);
-  console.log('[记忆调试] chat_log条数:', (profile.chat_log||[]).length, ' push_history条数:', (profile.push_history||[]).length, ' pushHistoryText内容:', pushHistoryText);
 
   const systemPrompt = [
     `你现在扮演角色: ${profile.character_name || '一个角色'}。`,
